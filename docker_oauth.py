@@ -6,6 +6,7 @@ from tornado.httpclient import AsyncHTTPClient, HTTPError
 from tornado.netutil import Resolver
 
 from oauthenticator import LocalGitHubOAuthenticator
+from dockerspawner.systemuserspawner import SystemUserSpawner
 
 
 class UnixResolver(Resolver):
@@ -31,25 +32,43 @@ class DockerOAuthenticator(LocalGitHubOAuthenticator):
 
     """
 
-    resolver = UnixResolver(resolver=Resolver(), socket_pack='/var/run/restuser/restuser.sock')
+    resolver = UnixResolver(resolver=Resolver(), socket_path='/restuser.sock')
     AsyncHTTPClient.configure(None, resolver=resolver)
     client = AsyncHTTPClient()
-
+    
+    def system_user_exists(self, user):
+        # user_id is stored in state after looking it up
+        return user.state and 'user_id' in user.state
+    
     @gen.coroutine
-    def add_user(self, user):
+    def add_system_user(self, user):
         """Add a new user.
 
         This adds the user to the whitelist, and creates a system user by
         accessing a simple REST api.
 
         """
-
         try:
-            resp = yield self.client.fetch('http://unix+restuser/' + user, method='POST', body='{}')
+            resp = yield self.client.fetch('http://unix+restuser/' + user.name, method='POST', body='{}')
         except HTTPError as e:
-            print(e.response.code, e.response.body.decode('utf8', 'replace'))
-            return
+            self.log.error("Failed to create %r", user.name, exc_info=True)
+            raise
 
         # todo: save the user id into the whitelist or somewhere
-        user = json.loads(resp.body.decode('utf8', 'replace'))
-        self.log.debug(user)
+        info = json.loads(resp.body.decode('utf8', 'replace'))
+        self.log.info("Created user %s with uid %i", user.name, info['uid'])
+        if user.state is None:
+            user.state = {}
+        user.state['user_id'] = info['uid']
+
+
+class SystemUserDockerSpawner(SystemUserSpawner):
+    """SystemDockerSpawner that stores user_id in spawner state"""
+    def load_state(self, state):
+        super().load_state(state)
+        self.user_ids[self.user.name] = state['user_id']
+    
+    def get_state(self):
+        state = super().get_state()
+        state['user_id'] = self.user_ids[self.user.name]
+        return state
