@@ -5,7 +5,8 @@ from tornado import gen
 from tornado.httpclient import AsyncHTTPClient, HTTPError
 from tornado.netutil import Resolver
 
-from oauthenticator import LocalGitHubOAuthenticator
+from jupyterhub.auth import LocalAuthenticator
+from oauthenticator import GitHubOAuthenticator
 from dockerspawner.systemuserspawner import SystemUserSpawner
 
 
@@ -26,9 +27,9 @@ class UnixResolver(Resolver):
         raise gen.Return(result)
 
 
-class DockerOAuthenticator(LocalGitHubOAuthenticator):
-    """A version that mixes in local system user creation, but does so
-    from within a docker container
+class DockerAuthenticator(LocalAuthenticator):
+    """A version that performs local system user creation from within a
+    docker container.
 
     """
 
@@ -60,6 +61,14 @@ class DockerOAuthenticator(LocalGitHubOAuthenticator):
         if user.state is None:
             user.state = {}
         user.state['user_id'] = info['uid']
+
+
+class DockerOAuthenticator(DockerAuthenticator, GitHubOAuthenticator):
+    """A version that mixes in local system user creation from within a
+    docker container, and GitHub OAuthentication.
+
+    """
+    pass
 
 
 class SystemUserDockerSpawner(SystemUserSpawner):
