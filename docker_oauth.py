@@ -61,6 +61,7 @@ class DockerAuthenticator(LocalAuthenticator):
         if user.state is None:
             user.state = {}
         user.state['user_id'] = info['uid']
+        self.db.commit()
 
 
 class DockerOAuthenticator(DockerAuthenticator, GitHubOAuthenticator):
